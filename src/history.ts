@@ -9,6 +9,8 @@ type HistoryMethod = (state: any, title: string, url?: string | null | undefined
 
 export class History {
   readonly delegate: HistoryDelegate
+  initialLocation!: Location
+  initialRestorationIdentifier!: string
   started = false
   pageLoaded = false
 
@@ -16,8 +18,11 @@ export class History {
     this.delegate = delegate
   }
 
-  start() {
+  start(location: Location, restorationIdentifier: string) {
     if (!this.started) {
+      this.initialLocation = location
+      this.initialRestorationIdentifier = restorationIdentifier
+
       addEventListener("popstate", this.onPopState, false)
       addEventListener("load", this.onPageLoad, false)
       this.started = true
@@ -48,10 +53,13 @@ export class History {
 
     const { turbolinks } = event.state
     if (!turbolinks) return
-    
+
     const location = Location.currentLocation
-    const { restorationIdentifier } = turbolinks
-    this.delegate.historyPoppedToLocationWithRestorationIdentifier(location, restorationIdentifier)
+    const restorationIdentifier = this.restorationIdentifierForPopState(event)
+
+    if (restorationIdentifier) {
+      this.delegate.historyPoppedToLocationWithRestorationIdentifier(location, restorationIdentifier)
+    }
   }
 
   onPageLoad = (event: Event) => {
@@ -69,6 +77,20 @@ export class History {
 
   pageIsLoaded() {
     return this.pageLoaded || document.readyState == "complete"
+  }
+
+  restorationIdentifierForPopState(event: PopStateEvent) {
+    if (event.state) {
+      return (event.state.turbolinks || {}).restorationIdentifier
+    }
+
+    if (this.poppedToInitialEntry(event)) {
+      return this.initialRestorationIdentifier
+    }
+  }
+
+  poppedToInitialEntry(event: PopStateEvent) {
+    return !event.state && Location.currentLocation.isEqualTo(this.initialLocation)
   }
 
   update(method: HistoryMethod, location: Location, restorationIdentifier: string) {
